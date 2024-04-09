@@ -1,0 +1,8 @@
+LOGICAL_OP = and | or | not
+COMP = eq | ne | co | sw | ew | pr | gt | ge | lt | le
+LP = \(
+RP = \)
+LB = \[
+RB = \]
+LITERAL = ".*" | \d+ | true | false
+IDENTIFIER = \w+
