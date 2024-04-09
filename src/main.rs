@@ -1,7 +1,8 @@
+mod parser;
 mod tokenizer;
 
+use crate::parser::Parser;
 use crate::tokenizer::Tokenizer;
-
 
 fn main() {
     let tokenizer = Tokenizer::from_file("tokens.txt").unwrap();
@@ -21,6 +22,22 @@ fn main() {
         }
         Err(err) => {
             println!("{}", err);
+        }
+    }
+
+    let parser = Parser::from_file("grammar.txt", tokenizer).unwrap();
+
+    println!();
+    println!("Grammars: ");
+    for (name, variants) in parser.grammar.iter() {
+        for variant in variants.iter() {
+            let body: String = variant
+                .iter()
+                .map(|variant| variant.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
+
+            println!("{} -> {}", name, body);
         }
     }
 }

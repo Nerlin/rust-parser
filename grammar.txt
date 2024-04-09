@@ -1,0 +1,7 @@
+FILTER    -> attrExp | logExp | valuePath | [LOGICAL_NOT] LP FILTER RP
+valuePath -> attrPath LB valFilter RB
+valFilter -> attrExp | logExp | [LOGICAL_NOT] LP valFilter RP
+attrExp   -> attrPath COMP_PR | attrPath COMP LITERAL
+logExp    -> FILTER LOGICAL_OP FILTER
+attrPath  -> IDENTIFIER [subAttr]
+subAttr   -> DOT IDENTIFIER

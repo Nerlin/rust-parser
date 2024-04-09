@@ -1,8 +1,11 @@
-LOGICAL_OP = and | or | not
-COMP = eq | ne | co | sw | ew | pr | gt | ge | lt | le
+LOGICAL_OP = and | or
+LOGICAL_NOT = not
+COMP = eq | ne | co | sw | ew | gt | ge | lt | le
+COMP_PR = pr
 LP = \(
 RP = \)
 LB = \[
 RB = \]
-LITERAL = ".*" | \d+ | true | false
+LITERAL = ".*" | \d+ | true | false | null
+DOT = \.
 IDENTIFIER = \w+

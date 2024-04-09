@@ -6,12 +6,23 @@ use regex::Regex;
 
 pub struct Pattern {
     pub name: String,
-    pub value: Regex
+    pub value: Regex,
+}
+
+impl Clone for Pattern {
+    fn clone(&self) -> Self {
+        Self { name: self.name.clone(), value: self.value.clone() }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.name = source.name.clone();
+        self.value = source.value.clone();
+    }
 }
 
 pub struct Token {
     pub name: String,
-    pub value: String
+    pub value: String,
 }
 
 impl fmt::Display for Token {
@@ -21,29 +32,27 @@ impl fmt::Display for Token {
 }
 
 pub struct Tokenizer {
-    pub patterns: Vec<Pattern>
+    pub patterns: Vec<Pattern>,
 }
 
 impl Tokenizer {
-
     pub fn from_file(path: &str) -> Result<Tokenizer, String> {
         let content = match read_to_string(path) {
-            Err(e) => return Err(
-                format!("Unable to open the specified file: {e}")
-            ),
-            Ok(f) => f
+            Err(e) => return Err(format!("Unable to open the specified file: {e}")),
+            Ok(f) => f,
         };
 
-        let token_declaration = Regex::new(r"(?<name>\w+) = (?<pattern>.*)").unwrap();
+        let token_declaration = Regex::new(r"(?<name>\w+)\s*=\s*(?<pattern>.*)").unwrap();
         let mut patterns = vec![];
 
         for line in content.lines().into_iter() {
             if let Some(capture) = token_declaration.captures(line) {
-                let (_, [name, raw_pattern])  = capture.extract();
+                let (_, [name, raw_pattern]) = capture.extract();
 
-                let parts: Vec<String> = raw_pattern.split("|").map(|s| {
-                    format!("^{}$", s.trim())
-                }).collect();
+                let parts: Vec<String> = raw_pattern
+                    .split("|")
+                    .map(|s| format!("^{}$", s.trim()))
+                    .collect();
 
                 let pattern = parts.join("|");
 
@@ -63,15 +72,13 @@ impl Tokenizer {
                 };
                 patterns.push(token);
             } else {
-                return Err(
-                    String::from("The file must contain token declarations with NAME = PATTERN format.")
-                )
+                return Err(String::from(
+                    "The file must contain token declarations with NAME = PATTERN format.",
+                ));
             }
         }
 
-        Ok(
-            Tokenizer { patterns }
-        )
+        Ok(Tokenizer { patterns })
     }
 
     pub fn parse(&self, s: &str) -> Result<Vec<Token>, String> {
@@ -90,12 +97,12 @@ impl Tokenizer {
                 if pattern.value.is_match(lookup_str) {
                     matched = Some(Token {
                         name: pattern.name.clone(),
-                        value: lookup.clone()
+                        value: lookup.clone(),
                     });
 
                     break;
                 }
-            };
+            }
 
             if let Some(token) = matched {
                 result.push(token);
