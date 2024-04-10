@@ -4,20 +4,10 @@ use std::fs::read_to_string;
 
 use regex::Regex;
 
+#[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
     pub value: Regex,
-}
-
-impl Clone for Pattern {
-    fn clone(&self) -> Self {
-        Self { name: self.name.clone(), value: self.value.clone() }
-    }
-
-    fn clone_from(&mut self, source: &Self) {
-        self.name = source.name.clone();
-        self.value = source.value.clone();
-    }
 }
 
 pub struct Token {
@@ -42,7 +32,7 @@ impl Tokenizer {
             Ok(f) => f,
         };
 
-        let token_declaration = Regex::new(r"(?<name>\w+)\s*=\s*(?<pattern>.*)").unwrap();
+        let token_declaration = Regex::new(r"(?<name>.+)\s*=\s*(?<pattern>.*)").unwrap();
         let mut patterns = vec![];
 
         for line in content.lines().into_iter() {
@@ -54,6 +44,7 @@ impl Tokenizer {
                     .map(|s| format!("^{}$", s.trim()))
                     .collect();
 
+                let name = name.trim();
                 let pattern = parts.join("|");
 
                 let regex = match Regex::new(pattern.as_str()) {
@@ -78,7 +69,15 @@ impl Tokenizer {
             }
         }
 
+        patterns.push(Tokenizer::epsilon());
         Ok(Tokenizer { patterns })
+    }
+
+    pub fn epsilon() -> Pattern {
+        Pattern {
+            name: String::from("epsilon"),
+            value: Regex::new("").unwrap(),
+        }
     }
 
     pub fn parse(&self, s: &str) -> Result<Vec<Token>, String> {
