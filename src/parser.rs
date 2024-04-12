@@ -1,17 +1,24 @@
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::fs::read_to_string;
+use std::ops::DerefMut;
+use std::rc::Rc;
 
 use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
-use crate::tokenizer::{Pattern, Tokenizer};
+use crate::tokenizer::{EPSILON, Pattern, Token, Tokenizer};
 
 pub struct Parser {
     pub grammars: IndexMap<String, GrammarVariants>,
     pub(crate) first: FirstSet,
     pub(crate) follow: FollowSet,
     pub(crate) table: ParsingTable,
+    pub(crate) tokenizer: Tokenizer,
 }
+
+const EOF: &'static str = "$";
+const ROOT: &'static str = "__ROOT";
 
 pub type GrammarVariants = Vec<GrammarVariant>;
 
@@ -39,6 +46,18 @@ impl Display for NodeType {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub enum AST {
+    Token {
+        name: String,
+        value: String,
+    },
+    Grammar {
+        name: String,
+        children: Vec<Rc<RefCell<AST>>>,
+    },
 }
 
 impl Parser {
@@ -78,11 +97,19 @@ impl Parser {
                         }
                     }
 
-                    if index == 0 {
-                        nodes.push(Parser::eof());
-                    }
                     variants.push(nodes);
                 }
+
+                if index == 0 {
+                    // Insert the root grammar as a parse start
+                    grammars.insert(String::from(ROOT), vec![
+                        vec![
+                            NodeType::Grammar { name: String::from(name) },
+                            Parser::eof(),
+                        ]
+                    ]);
+                }
+
                 grammars.insert(String::from(name), variants);
             }
         }
@@ -104,17 +131,133 @@ impl Parser {
             first,
             follow,
             table,
+            tokenizer,
         })
     }
 
     fn eof() -> NodeType {
         NodeType::Token {
-            name: String::from("$"),
+            name: EOF.to_string(),
             pattern: Pattern {
-                name: String::from("$"),
+                name: EOF.to_string(),
                 value: Regex::new("").unwrap(),
             },
         }
+    }
+
+    pub fn parse(&self, content: &str) -> Result<Rc<RefCell<AST>>, String> {
+        let result = self.tokenizer.parse(content);
+
+        if let Err(err) = result {
+            return Err(err);
+        }
+
+        let mut tokens = result.unwrap();
+        tokens.push(Token {
+            name: EOF.to_string(),
+            value: EOF.to_string(),
+        });
+
+        let eof = Rc::new(RefCell::new(AST::Token {
+            name: EOF.to_string(),
+            value: EOF.to_string(),
+        }));
+        let mut stack: Vec<Rc<RefCell<AST>>> = vec![eof];
+
+        let root;
+        if let Some(root_name) = self.grammars.keys().next() {
+            root = Rc::new(RefCell::new(AST::Grammar {
+                name: root_name.clone(),
+                children: vec![],
+            }));
+            stack.push(root.clone());
+        } else {
+            return Err(String::from("Parser doesn't have any grammars."));
+        }
+
+        let mut buffer = tokens.iter();
+        let mut next_token: &Token;
+
+        if let Some(value) = buffer.next() {
+            next_token = value;
+        } else {
+            return Err(String::from("Unexpected end of stream."));
+        }
+
+        loop {
+            if let Some(rc) = stack.pop() {
+                let mut ast = rc.borrow_mut();
+                match &mut ast.deref_mut() {
+                    AST::Grammar { name, ref mut children } => {
+                        match self.table.get(&(name.clone(), next_token.name.clone())) {
+                            Some(variant) => {
+                                if is_epsilon(variant) {
+                                    continue;
+                                } else {
+                                    let mut nodes = variant.clone();
+                                    nodes.reverse();
+
+                                    for variant_node in nodes.iter() {
+                                        let child: Rc<RefCell<AST>>;
+
+                                        match variant_node {
+                                            NodeType::Token { name, .. } => {
+                                                child = Rc::new(RefCell::new(AST::Token {
+                                                    name: name.clone(),
+                                                    value: String::new(),
+                                                }));
+                                            }
+                                            NodeType::Grammar { name } => {
+                                                child = Rc::new(RefCell::new(AST::Grammar {
+                                                    name: name.clone(),
+                                                    children: vec![],
+                                                }));
+                                            }
+                                        }
+
+                                        let clone = child.clone();
+                                        children.insert(0, child);
+                                        stack.push(clone);
+                                    }
+                                }
+                            }
+                            None => {
+                                return Err(format!("Unexpected token {}.", next_token.value));
+                            }
+                        }
+                    }
+                    AST::Token { name, .. } => {
+                        if name.clone().eq(&next_token.name.clone()) {
+                            if name == EOF {
+                                break;
+                            }
+
+                            *ast = AST::Token {
+                                name: name.clone(),
+                                value: next_token.value.clone(),
+                            };
+
+                            if let Some(next) = buffer.next() {
+                                next_token = next;
+                            } else {
+                                return Err(String::from("Unexpected end of stream."));
+                            }
+                        } else {
+                            return Err(format!("Unexpected token {}.", next_token.value));
+                        }
+                    }
+                }
+            } else {
+                return Err(format!("Unexpected token {}.", next_token.value));
+            }
+        }
+
+        if let AST::Grammar { ref children, .. } = root.borrow_mut().deref_mut() {
+            // Remove ROOT grammar from the AST since it's an internal grammar used for parsing.
+            return Ok(children.first().unwrap().clone());
+        }
+
+        Ok(root)
     }
 }
 
@@ -170,7 +313,7 @@ fn build_follow(
             for (index, node) in variant.iter().enumerate() {
                 match node {
                     NodeType::Token { name, .. } => {
-                        if name == "epsilon" {
+                        if name == EPSILON {
                             // Epsilon tokens cannot be included in follow sets
                             continue;
                         }
@@ -194,7 +337,7 @@ fn build_follow(
 
                             if let Some(first_nodes) = first.get(name) {
                                 for node in first_nodes.iter() {
-                                    if node == "epsilon" {
+                                    if node == EPSILON {
                                         // Epsilon tokens cannot be included in follow sets
                                         continue;
                                     }
@@ -240,7 +383,7 @@ fn is_epsilon(variant: &GrammarVariant) -> bool {
     if variant.len() == 1 {
         let node = variant.first().unwrap();
         if let NodeType::Token { name, .. } = node {
-            if name == "epsilon" {
+            if name == EPSILON {
                 return true;
             }
         }
@@ -291,7 +434,7 @@ fn insert_parsing_table_row(
     variant: &GrammarVariant,
 ) {
     for token in tokens.iter() {
-        if token != "epsilon" {
+        if token != EPSILON {
             let mut nodes: GrammarVariant = vec![];
             for node in variant.iter() {
                 nodes.push(node.clone());

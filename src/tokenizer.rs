@@ -4,12 +4,15 @@ use std::fs::read_to_string;
 
 use regex::Regex;
 
+pub(crate) const EPSILON: &'static str = "epsilon";
+
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
     pub value: Regex,
 }
 
+#[derive(Debug)]
 pub struct Token {
     pub name: String,
     pub value: String,
@@ -17,10 +20,11 @@ pub struct Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", &self.name, &self.value)
+        write!(f, "{}={}", &self.name, &self.value)
     }
 }
 
+#[derive(Debug)]
 pub struct Tokenizer {
     pub patterns: Vec<Pattern>,
 }
@@ -75,7 +79,7 @@ impl Tokenizer {
 
     pub fn epsilon() -> Pattern {
         Pattern {
-            name: String::from("epsilon"),
+            name: String::from(EPSILON),
             value: Regex::new("").unwrap(),
         }
     }

@@ -1,9 +1,10 @@
+use clap::Parser as CLIParser;
+
+use crate::parser::{AST, Parser};
+use crate::tokenizer::Tokenizer;
+
 mod parser;
 mod tokenizer;
-
-use clap::{Parser as CLIParser};
-use crate::parser::Parser;
-use crate::tokenizer::Tokenizer;
 
 #[derive(CLIParser)]
 struct Cli {
@@ -74,5 +75,35 @@ fn main() {
             "({grammar_name}, {token_name}) = {grammar_name} -> {}",
             nodes.join(" ")
         )
+    }
+
+    let result = parser.parse(args.content.as_str());
+    println!();
+    match result {
+        Ok(ast) => {
+            println!("Result: ");
+            print_ast(&ast.borrow(), 0);
+        }
+        Err(err) => {
+            println!("Parsing error:");
+            println!("{}", err);
+        }
+    }
+}
+
+
+fn print_ast(ast: &AST, level: usize) {
+    let indent = "  ".repeat(level);
+
+    match &ast {
+        AST::Token { value, .. } => {
+           println!("{indent}{value}");
+        }
+        AST::Grammar { name, children } => {
+            println!("{indent}{name}");
+            for item in children.iter() {
+                print_ast(&item.borrow(), level + 1);
+            }
+        }
     }
 }
