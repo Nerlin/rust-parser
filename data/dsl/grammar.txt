@@ -1,0 +1,11 @@
+Document -> ModelDef TypeDefs
+ModelDef -> model schema Version
+Version  -> number | number . number
+TypeDefs -> TypeDef TypeDefs | epsilon
+TypeDef  -> type identifier RelationsDef
+RelationsDef -> relations DefineList | epsilon
+DefineList -> DefineDecl DefineList | epsilon
+DefineDecl -> define identifier : [ Role RoleList ]
+Role -> identifier Role'
+Role' -> # identifier | epsilon
+RoleList -> , Role | epsilon

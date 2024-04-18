@@ -1,0 +1,13 @@
+type = type
+model = model
+define = define
+schema = schema
+relations = relations
+[ = \[
+] = \]
+: = \:
+# = #
+, = ,
+. = \.
+number = \d+
+identifier = \w+

@@ -7,7 +7,7 @@ use std::rc::Rc;
 use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
-use crate::tokenizer::{EPSILON, Pattern, Token, Tokenizer};
+use crate::tokenizer::{Pattern, Token, Tokenizer, EPSILON};
 
 pub struct Parser {
     pub grammars: IndexMap<String, GrammarVariants>,
@@ -102,12 +102,15 @@ impl Parser {
 
                 if index == 0 {
                     // Insert the root grammar as a parse start
-                    grammars.insert(String::from(ROOT), vec![
-                        vec![
-                            NodeType::Grammar { name: String::from(name) },
+                    grammars.insert(
+                        String::from(ROOT),
+                        vec![vec![
+                            NodeType::Grammar {
+                                name: String::from(name),
+                            },
                             Parser::eof(),
-                        ]
-                    ]);
+                        ]],
+                    );
                 }
 
                 grammars.insert(String::from(name), variants);
@@ -156,6 +159,8 @@ impl Parser {
         tokens.push(Token {
             name: EOF.to_string(),
             value: EOF.to_string(),
+            line: 0,
+            column: 0,
         });
 
         let eof = Rc::new(RefCell::new(AST::Token {
@@ -188,44 +193,45 @@ impl Parser {
             if let Some(rc) = stack.pop() {
                 let mut ast = rc.borrow_mut();
                 match &mut ast.deref_mut() {
-                    AST::Grammar { name, ref mut children } => {
-                        match self.table.get(&(name.clone(), next_token.name.clone())) {
-                            Some(variant) => {
-                                if is_epsilon(variant) {
-                                    continue;
-                                } else {
-                                    let mut nodes = variant.clone();
-                                    nodes.reverse();
+                    AST::Grammar {
+                        name,
+                        ref mut children,
+                    } => match self.table.get(&(name.clone(), next_token.name.clone())) {
+                        Some(variant) => {
+                            if is_epsilon(variant) {
+                                continue;
+                            } else {
+                                let mut nodes = variant.clone();
+                                nodes.reverse();
 
-                                    for variant_node in nodes.iter() {
-                                        let child: Rc<RefCell<AST>>;
+                                for variant_node in nodes.iter() {
+                                    let child: Rc<RefCell<AST>>;
 
-                                        match variant_node {
-                                            NodeType::Token { name, .. } => {
-                                                child = Rc::new(RefCell::new(AST::Token {
-                                                    name: name.clone(),
-                                                    value: String::new(),
-                                                }));
-                                            }
-                                            NodeType::Grammar { name } => {
-                                                child = Rc::new(RefCell::new(AST::Grammar {
-                                                    name: name.clone(),
-                                                    children: vec![],
-                                                }));
-                                            }
+                                    match variant_node {
+                                        NodeType::Token { name, .. } => {
+                                            child = Rc::new(RefCell::new(AST::Token {
+                                                name: name.clone(),
+                                                value: String::new(),
+                                            }));
                                         }
-
-                                        let clone = child.clone();
-                                        children.insert(0, child);
-                                        stack.push(clone);
+                                        NodeType::Grammar { name } => {
+                                            child = Rc::new(RefCell::new(AST::Grammar {
+                                                name: name.clone(),
+                                                children: vec![],
+                                            }));
+                                        }
                                     }
+
+                                    let clone = child.clone();
+                                    children.insert(0, child);
+                                    stack.push(clone);
                                 }
                             }
-                            None => {
-                                return Err(format!("Unexpected token {}.", next_token.value));
-                            }
                         }
-                    }
+                        None => {
+                            return unexpected_token(&next_token);
+                        }
+                    },
                     AST::Token { name, .. } => {
                         if name.clone().eq(&next_token.name.clone()) {
                             if name == EOF {
@@ -243,12 +249,12 @@ impl Parser {
                                 return Err(String::from("Unexpected end of stream."));
                             }
                         } else {
-                            return Err(format!("Unexpected token {}.", next_token.value));
+                            return unexpected_token(&next_token);
                         }
                     }
                 }
             } else {
-                return Err(format!("Unexpected token {}.", next_token.value));
+                return unexpected_token(&next_token);
             }
         }
 
@@ -442,4 +448,11 @@ fn insert_parsing_table_row(
             table.insert((grammar.clone(), token.clone()), nodes);
         }
     }
+}
+
+fn unexpected_token(token: &Token) -> Result<Rc<RefCell<AST>>, String> {
+    Err(format!(
+        "Unexpected token {} on line {}, column {}.",
+        token.value.escape_default(), token.line, token.column
+    ))
 }

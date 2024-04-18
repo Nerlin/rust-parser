@@ -1,0 +1,15 @@
+model
+  schema 1.1
+
+type document
+  relations
+    define viewer: [domain#member, user]
+    define commenter: [domain#member, user]
+    define editor: [domain#member, user]
+    define owner: [domain#member, user]
+
+type domain
+  relations
+    define member: [user]
+
+type user

@@ -1,6 +1,7 @@
 use clap::Parser as CLIParser;
+use std::fs::read_to_string;
 
-use crate::parser::{AST, Parser};
+use crate::parser::{Parser, AST};
 use crate::tokenizer::Tokenizer;
 
 mod parser;
@@ -10,9 +11,8 @@ mod tokenizer;
 struct Cli {
     token_path: String,
     grammar_path: String,
-    content: String
+    content_path: String,
 }
-
 
 fn main() {
     let args = Cli::parse();
@@ -24,9 +24,17 @@ fn main() {
         println!("{} = {}", pattern.name, pattern.value);
     }
 
+    let content = read_to_string(args.content_path.as_str()).expect(
+        format!(
+            "Unable to open the specified file: {}",
+            args.content_path.as_str()
+        )
+        .as_str(),
+    );
+
     println!();
     println!("Tokens: ");
-    match tokenizer.parse(args.content.as_str()) {
+    match tokenizer.parse(content.as_str()) {
         Ok(result) => {
             for token in result.iter() {
                 println!("{}", token)
@@ -77,7 +85,7 @@ fn main() {
         )
     }
 
-    let result = parser.parse(args.content.as_str());
+    let result = parser.parse(content.as_str());
     println!();
     match result {
         Ok(ast) => {
@@ -91,13 +99,12 @@ fn main() {
     }
 }
 
-
 fn print_ast(ast: &AST, level: usize) {
     let indent = "  ".repeat(level);
 
     match &ast {
         AST::Token { value, .. } => {
-           println!("{indent}{value}");
+            println!("{indent}{value}");
         }
         AST::Grammar { name, children } => {
             println!("{indent}{name}");

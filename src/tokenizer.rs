@@ -16,6 +16,8 @@ pub struct Pattern {
 pub struct Token {
     pub name: String,
     pub value: String,
+    pub line: usize,
+    pub column: usize,
 }
 
 impl fmt::Display for Token {
@@ -87,20 +89,30 @@ impl Tokenizer {
     pub fn parse(&self, s: &str) -> Result<Vec<Token>, String> {
         let mut result = vec![];
 
-        let mut lookup = String::new();
-        let mut unmatched = "";
+        let mut lookup: Option<Body> = None;
+        let mut unmatched = String::new();
 
         for sub in split_keep(&s) {
             let mut matched: Option<Token> = None;
 
-            lookup = lookup + sub;
+            let current: Body = match &lookup {
+                Some(some) => {
+                    Body {
+                        value: some.clone().value + sub.value.as_str(),
+                        line: some.line,
+                        column: some.column,
+                    }
+                }
+                None => sub.clone(),
+            };
 
-            let lookup_str = lookup.as_str();
             for pattern in self.patterns.iter() {
-                if pattern.value.is_match(lookup_str) {
+                if pattern.value.is_match(current.value.as_str()) {
                     matched = Some(Token {
                         name: pattern.name.clone(),
-                        value: lookup.clone(),
+                        value: current.value.clone(),
+                        line: current.line,
+                        column: current.column,
                     });
 
                     break;
@@ -109,10 +121,10 @@ impl Tokenizer {
 
             if let Some(token) = matched {
                 result.push(token);
-                lookup = String::new();
-                unmatched = "";
+                lookup = None;
+                unmatched = String::new();
             } else if unmatched.len() == 0 {
-                unmatched = sub;
+                unmatched = sub.value.clone();
             }
         }
 
@@ -124,20 +136,66 @@ impl Tokenizer {
     }
 }
 
-fn split_keep(text: &str) -> Vec<&str> {
-    let mut result = Vec::new();
+#[derive(Debug, Clone)]
+struct Body {
+    value: String,
+    line: usize,
+    column: usize,
+}
+
+fn split_keep(text: &str) -> Vec<Body> {
+    let mut result: Vec<Body> = Vec::new();
     let mut last = 0;
+
+    let mut line = 1;
+    let mut line_start = 0;
+
+    let mut column = 1;
     for (index, matched) in text.match_indices(|c: char| !c.is_alphanumeric()) {
         if last != index {
-            result.push(&text[last..index]);
+            let last_match = &text[last..index];
+
+            result.push(Body {
+                value: String::from(last_match),
+                line,
+                column,
+            });
+
+            column += last_match.len();
         }
-        if matched != " " {
-            result.push(matched);
+
+        match matched {
+            " " | "\t" => {
+                column += 1;
+            }
+            "\r" => {
+                column = 1;
+                line_start = index;
+            }
+            "\n" => {
+                line += 1;
+                column = 1;
+                line_start = index;
+            }
+            _ => {
+                column = index - line_start;
+                result.push(Body {
+                    value: String::from(matched),
+                    line,
+                    column,
+                });
+                column += 1;
+            }
         }
         last = index + matched.len();
     }
+
     if last < text.len() {
-        result.push(&text[last..]);
+        result.push(Body {
+            value: String::from(&text[last..]),
+            line,
+            column,
+        });
     }
     result
 }
